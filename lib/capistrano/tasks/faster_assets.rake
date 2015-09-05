@@ -11,13 +11,13 @@ end
 
 namespace :deploy do
   namespace :assets do
-    desc "Precompile assets"
+    desc "Precompile assets if needed"
     task :precompile do
       on roles(fetch(:assets_roles)) do
         within release_path do
           with rails_env: fetch(:rails_env) do
             begin
-	      # find the most recent release
+              # find the most recent release
               latest_release = capture(:ls, '-xr', releases_path).split[1]
 
               # precompile if this is the first deploy
@@ -29,20 +29,23 @@ namespace :deploy do
               execute(:ls, latest_release_path.join('assets_manifest_backup')) rescue raise(PrecompileRequired)
 
               fetch(:assets_dependencies).each do |dep|
-		release = release_path.join(dep)
-		latest = latest_release_path.join(dep)
-		
-		# skip if both directories/files do not exist
-		next if [release, latest].map{|d| test "[ -e #{d} ]"}.uniq == [false]
-		
+                release = release_path.join(dep)
+                latest = latest_release_path.join(dep)
+                
+                # skip if both directories/files do not exist
+                next if [release, latest].map{|d| test "[ -e #{d} ]"}.uniq == [false]
+    
                 # execute raises if there is a diff
                 execute(:diff, '-Nqr', release, latest) rescue raise(PrecompileRequired)
               end
 
               info("Skipping asset precompile, no asset diff found")
 
-              # copy over all of the assets from the last release
-              execute(:cp, '-r', latest_release_path.join('public', fetch(:assets_prefix)), release_path.join('public', fetch(:assets_prefix)))
+              # if assets dir is symliked - everything is already in place
+              unless fetch(:linked_dirs, []).include?(File.join('public', fetch(:assets_prefix)))
+                warn("Copying assets from previous release (consider a shared assets dir)")
+                execute(:cp, '-r', latest_release_path.join('public', fetch(:assets_prefix)), release_path.join('public'))
+              end
             rescue PrecompileRequired
               execute(:rake, "assets:precompile")
             end
